@@ -1,0 +1,96 @@
+use std::collections::HashMap;
+
+mod tej_serializer;
+pub trait MeasurementCollector {
+    type Error;
+    type Data;
+    fn timestamp(&mut self, value: String) -> Result<(), Self::Error>;
+    fn measurement(&mut self, group: Option<&str>, name: &str, value: f64) -> Result<(), Self::Error>;
+}
+#[derive(Debug)]
+pub struct ThinEdgeJsonMap {
+    pub timestamp: String,
+    pub values: HashMap<String, Measurement>,
+}
+#[derive(Debug)]
+pub enum Measurement {
+    Single(f64),
+    Multi(HashMap<String, f64>),
+}
+
+#[derive(thiserror::Error, Debug)]
+pub enum ThinEdgeJsonMapError {
+    #[error("Duplicated measurement: {0}")]
+    DuplicatedMeasurement(String),
+
+    #[error("Duplicated measurement: {0}.{1}")]
+    DuplicatedSubMeasurement(String, String),
+}
+
+impl ThinEdgeJsonMap {
+    fn new()->Self{
+        Self{
+            timestamp:"4-20-2021".into(),
+            values:HashMap::new(),
+        }
+    }
+}
+
+impl MeasurementCollector for ThinEdgeJsonMap {
+    type Error = ThinEdgeJsonMapError;
+    type Data = ThinEdgeJsonMap;
+
+    fn timestamp(&mut self, value: String) -> Result<(), Self::Error> {
+        self.timestamp = value;
+        Ok(())
+    }
+
+    fn measurement(&mut self, group: Option<&str>, name: &str, value: f64) -> Result<(), Self::Error> {
+        let key = name.to_owned();
+       
+        match group {
+            None => {
+                self.values.insert(key, Measurement::Single(value));
+                return Ok(())
+            }
+            Some(group) => {
+                let key = group.to_owned();
+
+               if !self.values.contains_key(&key) {
+                   self.values
+                        .insert(key.clone(), Measurement::Multi(HashMap::new()));
+                }
+
+               let group = match self.values.get_mut(&key) {
+                     Some(Measurement::Multi(group)) => group,
+                     _ => {
+                           return Err(ThinEdgeJsonMapError::DuplicatedMeasurement(key));
+                         }
+               };
+
+               let sub_key = name.to_owned();
+               group.insert(sub_key, value);
+               Ok(())    
+           }    
+       }
+    } 
+}
+
+fn main() {
+    println!("Hello, world!");
+    let mut tej_producer = ThinEdgeJsonMap::new();
+    tej_producer.timestamp("4-20-2020".into()).unwrap();
+    tej_producer.measurement(None,"temperature", 25.0).unwrap();
+    tej_producer.measurement(Some("location"), "alti", 2100.4).unwrap();
+    tej_producer.measurement(Some("location"), "longi", 2100.4).unwrap();
+    tej_producer.measurement(Some("location"), "lati", 2100.4).unwrap();
+    tej_producer.measurement(Some("location"), "alti", 2100.5).unwrap();
+
+    println!("values--->{:#?}", tej_producer);
+
+ let t_serializer = tej_serializer::ThinEdgeJsonSerializer::new();
+ t_serializer.timestamp("dafjdk").unwrap();
+ 
+
+   
+ }
